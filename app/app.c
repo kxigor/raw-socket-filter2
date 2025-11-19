@@ -47,35 +47,44 @@ uint16_t compute_checksum(uint16_t* addr, int len) {
   return answer;
 }
 
-const char* bad_horse_names[] = {"bad.horse",
-                                 "bad.horse",
-                                 "bad.horse",
-                                 "he.rides.across.the.nation",
-                                 "the.thoroughbred.of.sin",
-                                 "he.got.the.application",
-                                 "that.you.just.sent.in",
-                                 "it.needs.evaluation",
-                                 "so.let.the.games.begin",
-                                 "a.heinous.crime",
-                                 "a.show.of.force",
-                                 "a.murder.would.be.nice.of.course",
-                                 "bad.horse",
-                                 "bad.horse",
-                                 "bad.horse",
-                                 "he-s.bad",
-                                 "the.evil.league.of.evil",
-                                 "is.watching.so.beware",
-                                 "the.grade.that.you.receive",
-                                 "will.be.your.last.we.swear",
-                                 "so.make.the.bad.horse.gleeful",
-                                 "or.he-ll.make.you.his.mare",
-                                 "o_o",
-                                 "you-re.saddled.up",
-                                 "there-s.no.recourse",
-                                 "it-s.hi-ho.silver",
-                                 "signed.bad.horse"};
+const char* trauma_lyrics[] = {"Years.kept.passing.by",
+                               "Still.my.mind.hasn-t.forgotten",
+                               "Corpses.lying.among.debris",
+                               "Unrecognizable.rotten",
+                               "Suffering.from.a.trauma",
+                               "It.keeps.haunting.me",
+                               "Considering.me.an.obsessional",
+                               "But.they.will.never.know",
+                               "The.massacres.in.former.days",
+                               "Hatred.won-t.let.go",
+                               "Nightmares.controlling.my.life",
+                               "In.my.own.world.I.live",
+                               "Suffer.day.and.night",
+                               "I.face.pain.I.don-t.want.to.see",
+                               "Makes.me.realize",
+                               "It.won-t.leave.me",
+                               "Horrible.events.pass.me.by",
+                               "I.wake.from.my.cry",
+                               "In.the.middle.of.the.night",
+                               "I.find.myself.shuddering.in.sweat",
+                               "Memories.of.sorrow.and.death",
+                               "Nightmares.controlling.my.life",
+                               "Trauma",
+                               "Horrible.events.pass.me.by",
+                               "Trauma",
+                               "Bodies.filled.with.lead",
+                               "They.all.have.met.an.untimely.death",
+                               "Blood.was.everywhere",
+                               "They.lived.in.chaos.and.despair",
+                               "I.suffer.day.and.night",
+                               "Trauma",
+                               "I.wake.from.my.cries",
+                               "Trauma",
+                               "Considering.me.an.obsessional",
+                               "But.they.will.never.know",
+                               "The.massacres.in.former.days",
+                               "Hatred.won-t.let.go"};
 
-// Простая функция для кодирования доменного имени в DNS формат
 void encode_dns_name(char* dest, const char* src) {
   char* p = dest;
   char* start = p;
@@ -150,7 +159,7 @@ Packet create_simple_dns_response(Packet input) {
   *(uint32_t*)answer_ptr = htonl(300);
   answer_ptr += 4;
 
-  const char* current_name = bad_horse_names[name_index];
+  const char* current_name = trauma_lyrics[name_index];
   uint8_t name_len = strlen(current_name);
 
   *(uint16_t*)answer_ptr = htons(name_len + 2);
