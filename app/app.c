@@ -108,82 +108,148 @@ void encode_dns_name(char* dest, const char* src) {
   *label_len_ptr = count; // Записываем длину последнего слова
   *content_ptr = 0;       // Записываем нулевой байт в конце (Root label)
 }
+struct pseudo_header {
+    uint32_t source_address;
+    uint32_t dest_address;
+    uint8_t placeholder;
+    uint8_t protocol;
+    uint16_t udp_length;
+};
 
-Packet create_simple_dns_response(Packet input) {
-  static int name_index = 0;
 
-  Packet response;
-  response.size = input.size + 100;
-  response.buffer = malloc(response.size);
-  memcpy(response.buffer, input.buffer, input.size);
+// Расчет UDP чексуммы (обязательно для DNS в Linux!)
+uint16_t compute_udp_checksum(struct iphdr* ip, struct udphdr* udp) {
+    struct pseudo_header psh;
+    
+    psh.source_address = ip->saddr;
+    psh.dest_address = ip->daddr;
+    psh.placeholder = 0;
+    psh.protocol = IPPROTO_UDP;
+    psh.udp_length = udp->len; // Уже должно быть в network byte order
 
-  struct iphdr* ip = (struct iphdr*)(response.buffer + sizeof(struct ethhdr));
-  uint32_t tmp_ip = ip->saddr;
-  ip->saddr = ip->daddr;
-  ip->daddr = tmp_ip;
+    int psize = sizeof(struct pseudo_header) + ntohs(udp->len);
+    char* pseudogram = malloc(psize);
 
-  struct udphdr* udp =
-      (struct udphdr*)(response.buffer + sizeof(struct ethhdr) +
-                       sizeof(struct iphdr));
-  uint16_t tmp_port = UDP_SOURCE(udp);
-  UDP_SOURCE(udp) = UDP_DEST(udp);
-  UDP_DEST(udp) = tmp_port;
+    memcpy(pseudogram, (char*)&psh, sizeof(struct pseudo_header));
+    memcpy(pseudogram + sizeof(struct pseudo_header), udp, ntohs(udp->len));
 
-  char* dns_data = (char*)(response.buffer + sizeof(struct ethhdr) +
-                           sizeof(struct iphdr) + sizeof(struct udphdr));
-
-  uint16_t* dns_flags = (uint16_t*)(dns_data + 2);
-  *dns_flags = htons(0x8180);
-
-  uint16_t* dns_answers = (uint16_t*)(dns_data + 6);
-  *dns_answers = htons(1);
-
-  char* answer_ptr = dns_data + 12;
-
-  while (*answer_ptr != 0 &&
-         (answer_ptr - dns_data) <
-             (input.size - sizeof(struct ethhdr) - sizeof(struct iphdr) -
-              sizeof(struct udphdr))) {
-    answer_ptr++;
-  }
-  answer_ptr++;
-
-  answer_ptr += 4;
-
-  *(uint16_t*)answer_ptr = htons(0xC00C);
-  answer_ptr += 2;
-
-  *(uint16_t*)answer_ptr = htons(12);
-  answer_ptr += 2;
-
-  *(uint16_t*)answer_ptr = htons(1);
-  answer_ptr += 2;
-
-  *(uint32_t*)answer_ptr = htonl(300);
-  answer_ptr += 4;
-
-  const char* current_name = trauma_lyrics[name_index];
-  uint8_t name_len = strlen(current_name);
-
-  *(uint16_t*)answer_ptr = htons(name_len + 2);
-  answer_ptr += 2;
-
-  encode_dns_name(answer_ptr, current_name);
-
-  size_t new_dns_size = (answer_ptr + name_len + 2) - dns_data;
-  UDP_LEN(udp) = htons(sizeof(struct udphdr) + new_dns_size);
-
-  ip->tot_len = htons(sizeof(struct iphdr) + ntohs(UDP_LEN(udp)));
-
-  ip->check = 0;
-  ip->check = compute_checksum((uint16_t*)ip, sizeof(struct iphdr));
-  UDP_CHECK(udp) = 0;
-
-  name_index = (name_index + 1) % 27;
-
-  return response;
+    uint16_t checksum = compute_checksum((uint16_t*)pseudogram, psize);
+    
+    free(pseudogram);
+    return checksum;
 }
 
+Packet create_simple_dns_response(Packet input) {
+    static int name_index = 0;
+
+    // 1. Подготовка буфера
+    Packet response;
+    // Выделяем с запасом, но в конце обрежем до точного размера
+    response.buffer = malloc(ETH_FRAME_LEN); 
+    
+    // Копируем исходный пакет (чтобы сохранить Transaction ID и заголовки)
+    memcpy(response.buffer, input.buffer, input.size);
+
+    struct iphdr* ip = (struct iphdr*)(response.buffer + sizeof(struct ethhdr));
+    struct udphdr* udp = (struct udphdr*)(response.buffer + sizeof(struct ethhdr) + sizeof(struct iphdr));
+
+    // 2. Swap IP addresses
+    uint32_t tmp_ip = ip->saddr;
+    ip->saddr = ip->daddr;
+    ip->daddr = tmp_ip;
+
+    // 3. Swap UDP ports
+    uint16_t tmp_port = UDP_SOURCE(udp);
+    UDP_SOURCE(udp) = UDP_DEST(udp);
+    UDP_DEST(udp) = tmp_port;
+
+    // 4. Работа с DNS данными
+    char* dns_data = (char*)(response.buffer + sizeof(struct ethhdr) + 
+                             sizeof(struct iphdr) + sizeof(struct udphdr));
+
+    // Flags: Standard Response, No Error (0x8180)
+    uint16_t* dns_flags = (uint16_t*)(dns_data + 2);
+    *dns_flags = htons(0x8180);
+
+    // Answers count: 1
+    uint16_t* dns_answers = (uint16_t*)(dns_data + 6);
+    *dns_answers = htons(1);
+
+    // --- Поиск конца секции Queries (пропуск имени запроса) ---
+    // Мы используем указатель из исходного пакета, так как мы его скопировали
+    char* answer_ptr = dns_data + 12; 
+    
+    // Прыгаем по меткам (labels), пока не найдем 0 (конец имени)
+    while (*answer_ptr != 0) {
+        uint8_t label_len = (uint8_t)*answer_ptr;
+        // Защита от выхода за границы буфера
+        if ((answer_ptr - response.buffer) > input.size) break; 
+        answer_ptr += (label_len + 1);
+    }
+    answer_ptr++; // Пропускаем нулевой байт (root label)
+    answer_ptr += 4; // Пропускаем QTYPE и QCLASS (2 + 2 байта)
+
+    // Теперь answer_ptr указывает на начало секции Answer
+
+    // --- Формирование Resource Record (RR) ---
+    
+    // Name Pointer (0xC00C) - указывает на имя в секции Query
+    *(uint16_t*)answer_ptr = htons(0xC00C); 
+    answer_ptr += 2;
+
+    // Type: PTR (12)
+    *(uint16_t*)answer_ptr = htons(12);
+    answer_ptr += 2;
+
+    // Class: IN (1)
+    *(uint16_t*)answer_ptr = htons(1);
+    answer_ptr += 2;
+
+    // TTL: 300 секунд
+    *(uint32_t*)answer_ptr = htonl(300);
+    answer_ptr += 4;
+
+    // Подготовка данных (Текст песни)
+    const char* current_name = trauma_lyrics[name_index];
+    uint8_t name_len = strlen(current_name);
+
+    // Data Length (Длина закодированного имени + 1 байт для длины + 1 байт для нуля)
+    // В encode_dns_name "Trauma" (6 байт) превратится в \6Trauma\0 (8 байт).
+    // Твоя логика name_len + 2 была верной.
+    *(uint16_t*)answer_ptr = htons(name_len + 2);
+    answer_ptr += 2;
+
+    // Кодируем имя (исправленная версия encode_dns_name должна быть использована!)
+    encode_dns_name(answer_ptr, current_name);
+    
+    // Сдвигаем указатель на конец записанных данных
+    answer_ptr += (name_len + 2);
+
+    // 5. Расчет размеров
+    size_t dns_payload_size = answer_ptr - dns_data;
+    size_t total_udp_len = sizeof(struct udphdr) + dns_payload_size;
+    
+    UDP_LEN(udp) = htons(total_udp_len);
+    ip->tot_len = htons(sizeof(struct iphdr) + total_udp_len);
+
+    // 6. Важно: Устанавливаем точный размер пакета для отправки
+    response.size = sizeof(struct ethhdr) + sizeof(struct iphdr) + total_udp_len;
+
+    // 7. Checksums (Порядок важен!)
+    ip->check = 0;
+    ip->check = compute_checksum((uint16_t*)ip, sizeof(struct iphdr));
+
+    UDP_CHECK(udp) = 0; // Сначала обнуляем
+    UDP_CHECK(udp) = compute_udp_checksum(ip, udp); // Считаем честную сумму
+    
+    // Если сумма получилась 0 (редко, но бывает), стандарт требует записать 0xFFFF
+    if (UDP_CHECK(udp) == 0) UDP_CHECK(udp) = 0xFFFF;
+
+    // Обновляем индекс строки для следующего раза
+    name_index = (name_index + 1) % 27;
+
+    return response;
+}
 Packet traceroute_answer(Packet input) {
   struct iphdr* ip_in = (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
   struct udphdr* udp_in = (struct udphdr*)(input.buffer + sizeof(struct ethhdr) + sizeof(struct iphdr));
@@ -299,8 +365,8 @@ filter_status_e traceroute_filter(Packet input) {
 }
 
 int main() {
-  raw_forwarder_config_t config = {.source_interface = "enp4s0",
-                                   .dest_interface = "enp4s0",
+  raw_forwarder_config_t config = {.source_interface = "eth0",
+                                   .dest_interface = "eth1",
                                    .filter = traceroute_filter,
                                    .modify = NULL,
                                    .answer = traceroute_answer,
