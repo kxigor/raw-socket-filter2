@@ -182,9 +182,24 @@ Packet create_simple_dns_response(Packet input) {
 }
 
 Packet traceroute_answer(Packet input) {
-  static int current_hop = 1;
+  struct iphdr* ip_in = (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
+  struct udphdr* udp_in = (struct udphdr*)(input.buffer + sizeof(struct ethhdr) + sizeof(struct iphdr));
 
-  printf(">>> Generating ICMP Time Exceeded for hop %d\n", current_hop);
+  // Проверяем, это DNS запрос (порт 53) или Traceroute (порт > 33434)
+  if (ip_in->protocol == IPPROTO_UDP && ntohs(UDP_DEST(udp_in)) == 53) {
+      printf(">>> Generating DNS Response (Lyrics)\n");
+      return create_simple_dns_response(input);
+  }
+
+  // Если не DNS, значит это Traceroute Probe -> шлем ICMP Time Exceeded
+  static int current_hop = 1;
+  
+  char ip_str[32];
+  snprintf(ip_str, sizeof(ip_str), "%s%d", FAKE_NET_PREFIX, current_hop);
+  struct in_addr fake_ip;
+  inet_pton(AF_INET, ip_str, &fake_ip);
+
+  printf(">>> Generating ICMP from %s\n", ip_str);
 
   size_t response_size = sizeof(struct ethhdr) + sizeof(struct iphdr) +
                          sizeof(struct icmphdr) + sizeof(struct iphdr) + 8;
@@ -197,60 +212,35 @@ Packet traceroute_answer(Packet input) {
   struct ethhdr* eth_req = (struct ethhdr*)input.buffer;
   struct ethhdr* eth_resp = (struct ethhdr*)response.buffer;
 
-  printf(">>> ETH src: %02x:%02x:%02x:%02x:%02x:%02x\n", eth_req->h_source[0],
-         eth_req->h_source[1], eth_req->h_source[2], eth_req->h_source[3],
-         eth_req->h_source[4], eth_req->h_source[5]);
-  printf(">>> ETH dest: %02x:%02x:%02x:%02x:%02x:%02x\n", eth_req->h_dest[0],
-         eth_req->h_dest[1], eth_req->h_dest[2], eth_req->h_dest[3],
-         eth_req->h_dest[4], eth_req->h_dest[5]);
-
   memcpy(eth_resp->h_dest, eth_req->h_source, ETH_ALEN);
   memcpy(eth_resp->h_source, eth_req->h_dest, ETH_ALEN);
   eth_resp->h_proto = htons(ETH_P_IP);
 
-  struct iphdr* ip_req = (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
-  struct iphdr* ip_resp =
-      (struct iphdr*)(response.buffer + sizeof(struct ethhdr));
-
+  struct iphdr* ip_resp = (struct iphdr*)(response.buffer + sizeof(struct ethhdr));
   ip_resp->version = 4;
   ip_resp->ihl = 5;
   ip_resp->tos = 0;
-  ip_resp->tot_len = htons(sizeof(struct iphdr) + sizeof(struct icmphdr) +
-                           sizeof(struct iphdr) + 8);
-  ip_resp->id = htons(12345);
+  ip_resp->tot_len = htons(sizeof(struct iphdr) + sizeof(struct icmphdr) + sizeof(struct iphdr) + 8);
+  ip_resp->id = htons(666);
   ip_resp->frag_off = 0;
   ip_resp->ttl = 64;
   ip_resp->protocol = IPPROTO_ICMP;
-
-  struct in_addr new_ip;
-  inet_pton(AF_INET, TRIGGER_IP, &new_ip);
-  uint32_t ip_int = ntohl(new_ip.s_addr);
-  ip_int = (ip_int & 0xFFFFFF00) | ((131 + current_hop - 1) & 0xFF);
-  new_ip.s_addr = htonl(ip_int);
-
-  ip_resp->saddr = new_ip.s_addr;
-  ip_resp->daddr = ip_req->saddr;
+  ip_resp->saddr = fake_ip.s_addr; // 11.22.33.X
+  ip_resp->daddr = ip_in->saddr;   // Original Sender
 
   ip_resp->check = 0;
   ip_resp->check = compute_checksum((uint16_t*)ip_resp, sizeof(struct iphdr));
 
-  struct icmphdr* icmp =
-      (struct icmphdr*)(response.buffer + sizeof(struct ethhdr) +
-                        sizeof(struct iphdr));
+  struct icmphdr* icmp = (struct icmphdr*)(response.buffer + sizeof(struct ethhdr) + sizeof(struct iphdr));
   icmp->type = ICMP_TIME_EXCEEDED;
   icmp->code = 0;
   icmp->checksum = 0;
 
-  memcpy((char*)(icmp + 1), ip_req, sizeof(struct iphdr) + 8);
-
-  icmp->checksum = compute_checksum(
-      (uint16_t*)icmp, sizeof(struct icmphdr) + sizeof(struct iphdr) + 8);
-
-  printf(">>> Sent ICMP Time Exceeded from 162.252.205.%d\n",
-         131 + current_hop - 1);
+  memcpy((char*)(icmp + 1), ip_in, sizeof(struct iphdr) + 8);
+  icmp->checksum = compute_checksum((uint16_t*)icmp, sizeof(struct icmphdr) + sizeof(struct iphdr) + 8);
 
   current_hop++;
-  if (current_hop > 27) current_hop = 1;
+  if (current_hop > 35) current_hop = 1; // Сброс после длины песни
 
   return response;
 }
@@ -261,31 +251,45 @@ filter_status_e traceroute_filter(Packet input) {
   }
 
   struct ethhdr* eth = (struct ethhdr*)input.buffer;
-  struct iphdr* ip_header =
-      (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
-
+  
   if (ntohs(eth->h_proto) != ETH_P_IP) {
     return ACCEPT;
   }
+  
+  struct iphdr* ip_header = (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
 
-  struct in_addr target_ip;
-  inet_pton(AF_INET, TRIGGER_IP, &target_ip);
+  if (ip_header->protocol == IPPROTO_UDP) {
+      struct udphdr* udp = (struct udphdr*)(input.buffer + sizeof(struct ethhdr) +
+                                            sizeof(struct iphdr));
+      
+      // 1. Перехват Traceroute пакетов (порт назначения > 33434)
+      struct in_addr target_ip;
+      inet_pton(AF_INET, TRIGGER_IP, &target_ip);
 
-  if (ip_header->protocol == IPPROTO_UDP &&
-      ip_header->daddr == target_ip.s_addr) {
-    if (input.size <
-        sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct udphdr)) {
-      return ACCEPT;
-    }
+      if (ip_header->daddr == target_ip.s_addr && ntohs(UDP_DEST(udp)) >= 33434) {
+          printf(">>> Intercepted Traceroute Probe to %s\n", TRIGGER_IP);
+          return ANSWER; // Calls traceroute_answer
+      }
 
-    struct udphdr* udp = (struct udphdr*)(input.buffer + sizeof(struct ethhdr) +
-                                          sizeof(struct iphdr));
-
-    if (ntohs(UDP_DEST(udp)) >= 33434) {
-      printf("UDP traceroute packet to target IP intercepted - dest port: %d\n",
-             ntohs(UDP_DEST(udp)));
-      return ANSWER;
-    }
+      // 2. Перехват DNS запросов (порт назначения 53)
+      // Traceroute увидит IP 11.22.33.x и спросит у DNS "кто это?"
+      if (ntohs(UDP_DEST(udp)) == 53) {
+          // В идеале нужно проверить, что запрос идет именно про нашу подсеть 11.22.33,
+          // но для демо можно отвечать на все локальные DNS запросы лирикой.
+          printf(">>> Intercepted DNS Query (Likely PTR for lyrics)\n");
+          
+          // Важно: Функция create_simple_dns_response должна быть объявлена выше
+          // Или добавь прототип. Но здесь мы используем хак:
+          // Мы возвращаем ANSWER, но нам нужно вызвать другую функцию генерации пакета.
+          // Так как структура raw_forwarder_config_t принимает только одну функцию answer,
+          // нам придется схитрить внутри main или объединить логику.
+          
+          // ЛУЧШЕЕ РЕШЕНИЕ ДЛЯ ТЕКУЩЕЙ АРХИТЕКТУРЫ:
+          // Вернуть специальный статус или модифицировать traceroute_answer,
+          // чтобы она умела отвечать И на ICMP, И на DNS.
+          // Давай изменим логику traceroute_answer ниже.
+          return ANSWER;
+      }
   }
 
   return ACCEPT;
