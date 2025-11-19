@@ -113,7 +113,7 @@ Packet create_simple_dns_response(Packet input) {
       (struct udphdr*)(response.buffer + sizeof(struct ethhdr) +
                        sizeof(struct iphdr));
   uint16_t tmp_port = UDP_SOURCE(udp);
-  udp->source = UDP_DEST(udp);
+  UDP_SOURCE(udp) = UDP_DEST(udp);
   UDP_DEST(udp) = tmp_port;
 
   char* dns_data = (char*)(response.buffer + sizeof(struct ethhdr) +

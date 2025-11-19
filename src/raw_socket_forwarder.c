@@ -96,6 +96,7 @@ static void* packet_processor_thread(void* arg) {
     switch (filter_status)
     {
     case ACCEPT: {
+      printf("bytes_received : %ld\n", bytes_received);
       CHECK_SYSCALL_NR(
         send(
           handle->dest_socket_fd,
