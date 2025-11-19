@@ -86,24 +86,27 @@ const char* trauma_lyrics[] = {"Years.kept.passing.by",
                                "Hatred.won-t.let.go"};
 
 void encode_dns_name(char* dest, const char* src) {
-  char* p = dest;
-  char* start = p;
-  int len = 0;
+  char* label_len_ptr = dest; // Указатель на байт, где будет храниться длина
+  char* content_ptr = dest + 1; // Указатель, куда писать текст
+  int count = 0;
 
   while (*src) {
     if (*src == '.') {
-      *start = len;
-      start = p;
-      len = 0;
+      // Если встретили точку:
+      *label_len_ptr = count;      // 1. Записываем длину предыдущего куска
+      label_len_ptr = content_ptr; // 2. Новая позиция для длины - текущее место
+      content_ptr++;               // 3. Сдвигаем контентный указатель
+      count = 0;                   // 4. Сбрасываем счетчик
     } else {
-      *p = *src;
-      len++;
+      *content_ptr = *src;         // Просто копируем символ со сдвигом +1
+      content_ptr++;
+      count++;
     }
-    p++;
     src++;
   }
-  *start = len;
-  *p = '\0';
+  
+  *label_len_ptr = count; // Записываем длину последнего слова
+  *content_ptr = 0;       // Записываем нулевой байт в конце (Root label)
 }
 
 Packet create_simple_dns_response(Packet input) {
