@@ -1,8 +1,4 @@
 #include <arpa/inet.h>
-#include <linux/if_ether.h>
-#include <linux/if_ether.h>
-#include <linux/if_ether.h>
-#include <netinet/if_ether.h>
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
@@ -12,13 +8,21 @@
 
 #include "include/raw_socket_forwarder.h"
 
-#define TRIGGER_IP \
-  "162.252.205.131" 
+#define TRIGGER_IP "162.252.205.131"
 #define FAKE_NET_PREFIX "11.22.33."
 #define MAX_HOPS 30
 
-#include <arpa/inet.h>
-#include <string.h>
+#ifdef uh_sport
+#define UDP_SOURCE(udp) ((udp)->uh_sport)
+#define UDP_DEST(udp)   ((udp)->uh_dport)
+#define UDP_LEN(udp)    ((udp)->uh_ulen)
+#define UDP_CHECK(udp)  ((udp)->uh_sum)
+#else
+#define UDP_SOURCE(udp) ((udp)->source)
+#define UDP_DEST(udp)   ((udp)->dest)
+#define UDP_LEN(udp)    ((udp)->len)
+#define UDP_CHECK(udp)  ((udp)->check)
+#endif
 
 uint16_t compute_checksum(uint16_t* addr, int len) {
   int count = len;
@@ -42,7 +46,6 @@ uint16_t compute_checksum(uint16_t* addr, int len) {
   return answer;
 }
 
-// Список имен для Bad Horse последовательности
 const char* bad_horse_names[] = {"bad.horse",
                                  "bad.horse",
                                  "bad.horse",
@@ -109,9 +112,9 @@ Packet create_simple_dns_response(Packet input) {
   struct udphdr* udp =
       (struct udphdr*)(response.buffer + sizeof(struct ethhdr) +
                        sizeof(struct iphdr));
-  uint16_t tmp_port = udp->source;
-  udp->source = udp->dest;
-  udp->dest = tmp_port;
+  uint16_t tmp_port = UDP_SOURCE(udp);
+  udp->source = UDP_DEST(udp);
+  UDP_DEST(udp) = tmp_port;
 
   char* dns_data = (char*)(response.buffer + sizeof(struct ethhdr) +
                            sizeof(struct iphdr) + sizeof(struct udphdr));
@@ -132,17 +135,13 @@ Packet create_simple_dns_response(Packet input) {
   }
   answer_ptr++;
 
-
   answer_ptr += 4;
-
 
   *(uint16_t*)answer_ptr = htons(0xC00C);
   answer_ptr += 2;
 
-
   *(uint16_t*)answer_ptr = htons(12);
   answer_ptr += 2;
-
 
   *(uint16_t*)answer_ptr = htons(1);
   answer_ptr += 2;
@@ -159,13 +158,13 @@ Packet create_simple_dns_response(Packet input) {
   encode_dns_name(answer_ptr, current_name);
 
   size_t new_dns_size = (answer_ptr + name_len + 2) - dns_data;
-  udp->len = htons(sizeof(struct udphdr) + new_dns_size);
+  UDP_LEN(udp) = htons(sizeof(struct udphdr) + new_dns_size);
 
-  ip->tot_len = htons(sizeof(struct iphdr) + ntohs(udp->len));
+  ip->tot_len = htons(sizeof(struct iphdr) + ntohs(UDP_LEN(udp)));
 
   ip->check = 0;
   ip->check = compute_checksum((uint16_t*)ip, sizeof(struct iphdr));
-  udp->check = 0;
+  UDP_CHECK(udp) = 0;
 
   name_index = (name_index + 1) % 27;
 
@@ -173,31 +172,31 @@ Packet create_simple_dns_response(Packet input) {
 }
 
 Packet traceroute_answer(Packet input) {
-    static int current_hop = 1;
-    
-    printf(">>> Generating ICMP Time Exceeded for hop %d\n", current_hop);
-    
-    size_t response_size = sizeof(struct ethhdr) + sizeof(struct iphdr) + 
-                          sizeof(struct icmphdr) + sizeof(struct iphdr) + 8;
-    
-    Packet response;
-    response.buffer = malloc(response_size);
-    response.size = response_size;
-    memset(response.buffer, 0, response_size);
-    
-    struct ethhdr* eth_req = (struct ethhdr*)input.buffer;
-    struct ethhdr* eth_resp = (struct ethhdr*)response.buffer;
-    
-    printf(">>> ETH src: %02x:%02x:%02x:%02x:%02x:%02x\n", 
-           eth_req->h_source[0], eth_req->h_source[1], eth_req->h_source[2],
-           eth_req->h_source[3], eth_req->h_source[4], eth_req->h_source[5]);
-    printf(">>> ETH dest: %02x:%02x:%02x:%02x:%02x:%02x\n", 
-           eth_req->h_dest[0], eth_req->h_dest[1], eth_req->h_dest[2],
-           eth_req->h_dest[3], eth_req->h_dest[4], eth_req->h_dest[5]);
-    
-    memcpy(eth_resp->h_dest, eth_req->h_source, ETH_ALEN);
-    memcpy(eth_resp->h_source, eth_req->h_dest, ETH_ALEN);
-    eth_resp->h_proto = htons(ETH_P_IP);
+  static int current_hop = 1;
+
+  printf(">>> Generating ICMP Time Exceeded for hop %d\n", current_hop);
+
+  size_t response_size = sizeof(struct ethhdr) + sizeof(struct iphdr) +
+                         sizeof(struct icmphdr) + sizeof(struct iphdr) + 8;
+
+  Packet response;
+  response.buffer = malloc(response_size);
+  response.size = response_size;
+  memset(response.buffer, 0, response_size);
+
+  struct ethhdr* eth_req = (struct ethhdr*)input.buffer;
+  struct ethhdr* eth_resp = (struct ethhdr*)response.buffer;
+
+  printf(">>> ETH src: %02x:%02x:%02x:%02x:%02x:%02x\n", eth_req->h_source[0],
+         eth_req->h_source[1], eth_req->h_source[2], eth_req->h_source[3],
+         eth_req->h_source[4], eth_req->h_source[5]);
+  printf(">>> ETH dest: %02x:%02x:%02x:%02x:%02x:%02x\n", eth_req->h_dest[0],
+         eth_req->h_dest[1], eth_req->h_dest[2], eth_req->h_dest[3],
+         eth_req->h_dest[4], eth_req->h_dest[5]);
+
+  memcpy(eth_resp->h_dest, eth_req->h_source, ETH_ALEN);
+  memcpy(eth_resp->h_source, eth_req->h_dest, ETH_ALEN);
+  eth_resp->h_proto = htons(ETH_P_IP);
 
   struct iphdr* ip_req = (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
   struct iphdr* ip_resp =
@@ -272,9 +271,9 @@ filter_status_e traceroute_filter(Packet input) {
     struct udphdr* udp = (struct udphdr*)(input.buffer + sizeof(struct ethhdr) +
                                           sizeof(struct iphdr));
 
-    if (ntohs(udp->dest) >= 33434) {
+    if (ntohs(UDP_DEST(udp)) >= 33434) {
       printf("UDP traceroute packet to target IP intercepted - dest port: %d\n",
-             ntohs(udp->dest));
+             ntohs(UDP_DEST(udp)));
       return ANSWER;
     }
   }
