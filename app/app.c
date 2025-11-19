@@ -9,7 +9,7 @@
 
 #include "include/raw_socket_forwarder.h"
 
-#define TRIGGER_IP "162.252.205.131"
+#define TRIGGER_IP "66.66.66.66"
 #define FAKE_NET_PREFIX "11.22.33."
 #define MAX_HOPS 30
 
@@ -223,7 +223,7 @@ Packet traceroute_answer(Packet input) {
   ip_resp->protocol = IPPROTO_ICMP;
 
   struct in_addr new_ip;
-  inet_pton(AF_INET, "162.252.205.131", &new_ip);
+  inet_pton(AF_INET, TRIGGER_IP, &new_ip);
   uint32_t ip_int = ntohl(new_ip.s_addr);
   ip_int = (ip_int & 0xFFFFFF00) | ((131 + current_hop - 1) & 0xFF);
   new_ip.s_addr = htonl(ip_int);
@@ -269,7 +269,7 @@ filter_status_e traceroute_filter(Packet input) {
   }
 
   struct in_addr target_ip;
-  inet_pton(AF_INET, "162.252.205.131", &target_ip);
+  inet_pton(AF_INET, TRIGGER_IP, &target_ip);
 
   if (ip_header->protocol == IPPROTO_UDP &&
       ip_header->daddr == target_ip.s_addr) {
