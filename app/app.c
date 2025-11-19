@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <linux/version.h>
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
@@ -12,16 +13,16 @@
 #define FAKE_NET_PREFIX "11.22.33."
 #define MAX_HOPS 30
 
-#ifdef uh_sport
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 #define UDP_SOURCE(udp) ((udp)->uh_sport)
-#define UDP_DEST(udp)   ((udp)->uh_dport)
-#define UDP_LEN(udp)    ((udp)->uh_ulen)
-#define UDP_CHECK(udp)  ((udp)->uh_sum)
+#define UDP_DEST(udp) ((udp)->uh_dport)
+#define UDP_LEN(udp) ((udp)->uh_ulen)
+#define UDP_CHECK(udp) ((udp)->uh_sum)
 #else
 #define UDP_SOURCE(udp) ((udp)->source)
-#define UDP_DEST(udp)   ((udp)->dest)
-#define UDP_LEN(udp)    ((udp)->len)
-#define UDP_CHECK(udp)  ((udp)->check)
+#define UDP_DEST(udp) ((udp)->dest)
+#define UDP_LEN(udp) ((udp)->len)
+#define UDP_CHECK(udp) ((udp)->check)
 #endif
 
 uint16_t compute_checksum(uint16_t* addr, int len) {
