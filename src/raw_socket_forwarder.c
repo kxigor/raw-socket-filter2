@@ -70,19 +70,19 @@ static void* packet_processor_thread(void* arg) {
   char buffer[ETH_FRAME_LEN];
 
   while(atomic_load(&handle->running_flag)) {
-    ssize_t bytes_received = recv(
-      handle->source_socket_fd, 
-      buffer,
-      sizeof(buffer),
-      0
+    ssize_t bytes_received;
+
+    CHECK_SYSCALL_RES_NR(
+      bytes_received,
+      recv(
+        handle->source_socket_fd, 
+        buffer,
+        sizeof(buffer),
+        0
+      )
     );
 
-    if(bytes_received == -1) {
-      handle->error_status = errno;
-      stop_processor_thread(handle);
-    }
-
-    if (bytes_received == 0) {
+    if (bytes_received <= 0) {
       continue;
     }
 
