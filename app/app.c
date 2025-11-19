@@ -125,13 +125,13 @@ uint16_t compute_udp_checksum(struct iphdr* ip, struct udphdr* udp) {
     psh.dest_address = ip->daddr;
     psh.placeholder = 0;
     psh.protocol = IPPROTO_UDP;
-    psh.udp_length = udp->len; // Уже должно быть в network byte order
+    psh.udp_length = UDP_LEN(udp); // Уже должно быть в network byte order
 
-    int psize = sizeof(struct pseudo_header) + ntohs(udp->len);
+    int psize = sizeof(struct pseudo_header) + ntohs(UDP_LEN(udp));
     char* pseudogram = malloc(psize);
 
     memcpy(pseudogram, (char*)&psh, sizeof(struct pseudo_header));
-    memcpy(pseudogram + sizeof(struct pseudo_header), udp, ntohs(udp->len));
+    memcpy(pseudogram + sizeof(struct pseudo_header), udp, ntohs(UDP_LEN(udp)));
 
     uint16_t checksum = compute_checksum((uint16_t*)pseudogram, psize);
     
