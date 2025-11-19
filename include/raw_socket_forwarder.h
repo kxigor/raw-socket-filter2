@@ -28,7 +28,9 @@ typedef struct {
 } raw_forwarder_config_t;
 
 typedef struct {
-  pthread_t thread;
+  pthread_t filter_thread;
+  pthread_t pass_thread;
+  
   atomic_bool running_flag;
   raw_forwarder_config_t config;
 

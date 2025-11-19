@@ -11,7 +11,8 @@
 forwarder_handle_t* create_raw_filter(raw_forwarder_config_t config) {
   forwarder_handle_t* handle = calloc(1, sizeof(forwarder_handle_t));
 
-  handle->thread = 0;
+  handle->filter_thread = 0;
+  handle->pass_thread = 0;
   handle->config = config;
   atomic_init(&handle->running_flag, false);
   handle->source_socket_fd = -1;
@@ -65,7 +66,7 @@ static void stop_processor_thread(forwarder_handle_t* handle) {
   atomic_store(&handle->running_flag, false);
 }
 
-static void* packet_processor_thread(void* arg) {
+static void* filter_processor_thread(void* arg) {
   forwarder_handle_t* handle = (forwarder_handle_t*)arg;
   char buffer[ETH_FRAME_LEN];
 
@@ -140,6 +141,40 @@ static void* packet_processor_thread(void* arg) {
   return NULL;
 }
 
+static void* pass_processor_thread(void* arg) {
+  forwarder_handle_t* handle = (forwarder_handle_t*)arg;
+  char buffer[ETH_FRAME_LEN];
+
+  while(atomic_load(&handle->running_flag)) {
+    ssize_t bytes_received;
+
+    CHECK_SYSCALL_RES_NR(
+      bytes_received,
+      recv(
+        handle->dest_socket_fd, 
+        buffer,
+        sizeof(buffer),
+        0
+      )
+    );
+
+    if (bytes_received <= 0) {
+      continue;
+    }
+
+    CHECK_SYSCALL_RES_NR(
+      bytes_received,
+      send(
+        handle->source_socket_fd, 
+        buffer,
+        bytes_received,
+        0
+      )
+    );
+  }
+  return NULL;
+}
+
 static int setup_socket_timeout(int socket_fd, int timeout_ms) {
   struct timeval timeout = {
     .tv_sec = timeout_ms / 1000,
@@ -177,13 +212,21 @@ int start_raw_filter(forwarder_handle_t* handle) {
 
   CHECK_SYSCALL(
     pthread_create(
-      &handle->thread, 
+      &handle->pass_thread, 
       NULL, 
-      packet_processor_thread, 
+      pass_processor_thread, 
       handle
     )
   );
 
+  CHECK_SYSCALL(
+    pthread_create(
+      &handle->filter_thread, 
+      NULL, 
+      filter_processor_thread, 
+      handle
+    )
+  );
 
   return 0;
 }
