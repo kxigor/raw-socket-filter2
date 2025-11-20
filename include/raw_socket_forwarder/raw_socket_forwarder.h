@@ -27,6 +27,7 @@ typedef struct {
   size_t size;
 } Packet;
 
+/* TODO: postprocessor*/
 typedef struct {
   char source_interface[IF_NAMESIZE];
   char dest_interface[IF_NAMESIZE];

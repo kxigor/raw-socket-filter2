@@ -19,7 +19,6 @@
 #include "include/macros_helpers/macros_helpers.h"
 #include "include/raw_socket_forwarder/raw_socket_forwarder.h"
 
-/*=================== auxiliary structures ===================*/
 struct pseudo_header {
   uint32_t source_address;
   uint32_t dest_address;
@@ -28,7 +27,6 @@ struct pseudo_header {
   uint16_t udp_length;
 };
 
-/*==================== auxiliary methods =====================*/
 static uint16_t compute_checksum(uint16_t* addr, int len) {
   int count = len;
   uint32_t sum = 0;
@@ -75,16 +73,18 @@ static void encode_dns_name(char* dest, const char* src) {
 }
 
 static uint16_t compute_udp_checksum(struct iphdr* ip, struct udphdr* udp) {
-  struct pseudo_header psh;
-
-  psh.source_address = ip->saddr;
-  psh.dest_address = ip->daddr;
-  psh.placeholder = 0;
-  psh.protocol = IPPROTO_UDP;
-  psh.udp_length = UDP_LEN(udp);
+  struct pseudo_header psh = {.source_address = ip->saddr,
+                              .dest_address = ip->daddr,
+                              .placeholder = 0,
+                              .protocol = IPPROTO_UDP,
+                              .udp_length = UDP_LEN(udp)};
 
   int psize = sizeof(struct pseudo_header) + ntohs(UDP_LEN(udp));
-  char* pseudogram = malloc(psize);
+  char* pseudogram;
+  WARN_SYSCALL_RES(
+      /*res*/ pseudogram,
+      /*sys*/ malloc(psize),
+      /*exp*/ NULL);
 
   memcpy(pseudogram, (char*)&psh, sizeof(struct pseudo_header));
   memcpy(pseudogram + sizeof(struct pseudo_header), udp, ntohs(UDP_LEN(udp)));
@@ -99,7 +99,12 @@ static Packet create_simple_dns_response(Packet input) {
   static int name_index = 0;
 
   Packet response;
-  response.buffer = malloc(ETH_FRAME_LEN);
+  CHECK_SYSCALL_RES(
+      /*res*/ response.buffer,
+      /*sys*/ malloc(ETH_FRAME_LEN),
+      /*exp*/ NULL,
+      /*ret*/ return (Packet){0});
+
   memcpy(response.buffer, input.buffer, input.size);
 
   struct ethhdr* eth = (struct ethhdr*)response.buffer;
@@ -181,7 +186,6 @@ static Packet create_simple_dns_response(Packet input) {
   return response;
 }
 
-/*====================== implementation ======================*/
 Packet traceroute_answer(Packet input) {
   struct iphdr* ip_in = (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
   struct udphdr* udp_in =
@@ -189,7 +193,7 @@ Packet traceroute_answer(Packet input) {
                        sizeof(struct iphdr));
 
   if (ip_in->protocol == IPPROTO_UDP && ntohs(UDP_DEST(udp_in)) == 53) {
-    printf(">>> Generating DNS Response (Lyrics)\n");
+    LOG_INFO("Generating DNS Response (Lyrics)");
     return create_simple_dns_response(input);
   }
 
@@ -200,13 +204,17 @@ Packet traceroute_answer(Packet input) {
   struct in_addr fake_ip;
   inet_pton(AF_INET, ip_str, &fake_ip);
 
-  printf(">>> Generating ICMP from %s\n", ip_str);
+  LOG_INFO("Generating ICMP Time Exceeded from %s", ip_str);
 
   size_t response_size = sizeof(struct ethhdr) + sizeof(struct iphdr) +
                          sizeof(struct icmphdr) + sizeof(struct iphdr) + 8;
 
   Packet response;
-  response.buffer = malloc(response_size);
+  CHECK_SYSCALL_RES(
+      /*res*/ response.buffer,
+      /*sys*/ malloc(response_size),
+      /*exp*/ NULL,
+      /*ret*/ return (Packet){0};);
   response.size = response_size;
   memset(response.buffer, 0, response_size);
 
@@ -280,6 +288,7 @@ filter_status_e traceroute_filter(Packet input) {
     inet_pton(AF_INET, TRIGGER_IP, &target_ip);
 
     if (ip_header->daddr == target_ip.s_addr && dest_port >= 33434) {
+      LOG_INFO("Intercepted traceroute packet to %s:%d", TRIGGER_IP, dest_port);
       return ANSWER;
     }
 
@@ -300,7 +309,7 @@ filter_status_e traceroute_filter(Packet input) {
            i++) {
         if (memcmp(dns_data + i, target_signature, sizeof(target_signature)) ==
             0) {
-          printf(">>> Filter: Captured DNS Query for fake subnet 11.22.33.x\n");
+          LOG_INFO("Intercepted DNS query for fake subnet 11.22.33.x");
           return ANSWER;
         }
       }

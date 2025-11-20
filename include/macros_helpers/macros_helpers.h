@@ -19,6 +19,8 @@
 
 #define LOG_DEBUG(fmt, ...) LOG("DEBUG", fmt, ##__VA_ARGS__)
 #define LOG_INFO(fmt, ...) LOG("INFO", fmt, ##__VA_ARGS__)
+#define LOG_INFO_LUXERY(fmt, ...) \
+  LOG("INFO", "%s" fmt, PLANEINFO, ##__VA_ARGS__)
 #define LOG_WARN(fmt, ...) LOG("WARN", fmt, ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...) LOG("ERROR", fmt, ##__VA_ARGS__)
 
