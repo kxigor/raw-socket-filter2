@@ -64,9 +64,9 @@
   CHECK_SYSCALL_OUT_IMPL(result, result, syscall, expected, ret_call, \
                          __VA_ARGS__)
 
-#define CHECK_SYSCALL_NOE(syscall, expected, ret_call, ...)                   \
-  CHECK_SYSCALL_OUT_IMPL(int __result, __result, syscall, expected, ret_call, \
-                         __VA_ARGS__)
+#define CHECK_SYSCALL_NOE(syscall, expected, ret_call, ...)             \
+  CHECK_SYSCALL_NOE_OUT_IMPL(int __result, __result, syscall, expected, \
+                             ret_call, __VA_ARGS__)
 
 #define CHECK_SYSCALL_NOE_RES(result, syscall, expected, ret_call, ...) \
   CHECK_SYSCALL_OUT_IMPL(result, result, syscall, expected, ret_call,   \
