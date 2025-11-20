@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
+#include <stdint.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 
@@ -289,7 +290,7 @@ int start_raw_filter(forwarder_handle_t* handle) {
     /*noe*/ SUCCESS_PTHREAD,
     /*ret*/ return SYSERRCODE
   );
-  LOG_INFO("Pass processor thread created, ID: %lu", handle->pass_thread);
+  LOG_INFO("Pass processor thread created, ID: %lu", (uintptr_t)handle->pass_thread);
 
   CHECK_SYSCALL_NOE(
     /*sys*/ pthread_create(
@@ -301,7 +302,7 @@ int start_raw_filter(forwarder_handle_t* handle) {
     /*noe*/ SUCCESS_PTHREAD,
     /*ret*/ return SYSERRCODE
   );
-  LOG_INFO("Filter processor thread created, ID: %lu", handle->filter_thread);
+  LOG_INFO("Filter processor thread created, ID: %lu", (uintptr_t)handle->filter_thread);
 
   LOG_INFO("Raw filter started successfully");
   LOG_INFO("Forwarding packets: %s <-> %s", 
