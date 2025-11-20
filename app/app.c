@@ -35,7 +35,7 @@ int main() {
     /*ret*/ return SYSERRCODE
   );
 
-  LOG_INFO("Filter running. Press Enter to stop...\n");
+  LOG_INFO("Filter running. Press Enter to stop...");
   getchar();
 
   stop_raw_filter(handle);
