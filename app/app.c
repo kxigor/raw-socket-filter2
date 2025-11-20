@@ -283,34 +283,69 @@ Packet traceroute_answer(Packet input) {
 }
 
 filter_status_e traceroute_filter(Packet input) {
+  // 1. Базовая проверка длины (Ethernet + IP)
   if (input.size < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
     return ACCEPT;
   }
 
   struct ethhdr* eth = (struct ethhdr*)input.buffer;
   
+  // Проверяем, что это IP пакет
   if (ntohs(eth->h_proto) != ETH_P_IP) {
     return ACCEPT;
   }
   
   struct iphdr* ip_header = (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
 
+  // Работаем только с UDP
   if (ip_header->protocol == IPPROTO_UDP) {
+      // Проверяем длину, чтобы не вылететь при чтении UDP заголовка
+      if (input.size < sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct udphdr)) {
+          return ACCEPT;
+      }
+
       struct udphdr* udp = (struct udphdr*)(input.buffer + sizeof(struct ethhdr) +
                                             sizeof(struct iphdr));
       
+      uint16_t dest_port = ntohs(UDP_DEST(udp));
+
+      // --- ЛОГИКА 1: Traceroute Probe (Входящий пакет трассировки) ---
+      // Стандартный диапазон портов traceroute: 33434 - 33534
       struct in_addr target_ip;
       inet_pton(AF_INET, TRIGGER_IP, &target_ip);
 
-      if (ip_header->daddr == target_ip.s_addr && ntohs(UDP_DEST(udp)) >= 33434) {
-          printf(">>> Intercepted Traceroute Probe to %s\n", TRIGGER_IP);
-          return ANSWER;
+      if (ip_header->daddr == target_ip.s_addr && dest_port >= 33434) {
+          // printf(">>> Filter: Captured Traceroute Probe\n");
+          return ANSWER; 
       }
 
-      if (ntohs(UDP_DEST(udp)) == 53) {
-          printf(">>> Intercepted DNS Query (Likely PTR for lyrics)\n");
+      // --- ЛОГИКА 2: DNS Query (Запрос имени) ---
+      if (dest_port == 53) {
+          // Начинаем анализ содержимого DNS
+          char* dns_data = (char*)(input.buffer + sizeof(struct ethhdr) + 
+                                   sizeof(struct iphdr) + sizeof(struct udphdr));
           
-          return ANSWER;
+          int udp_payload_len = ntohs(UDP_LEN(udp)) - sizeof(struct udphdr);
+
+          // Минимальный DNS заголовок - 12 байт. Если меньше - это мусор.
+          if (udp_payload_len < 12) return ACCEPT;
+
+          // Сигнатура для поиска: "\02" + "33" + "\02" + "22" + "\02" + "11"
+          // Это соответствует части домена .33.22.11.in-addr.arpa
+          // (Reverse DNS для подсети 11.22.33.0/24)
+          const char target_signature[] = {0x02, '3', '3', 0x02, '2', '2', 0x02, '1', '1'};
+          
+          // Сканируем payload на наличие этой последовательности.
+          // Начинаем с 12-го байта (сразу после заголовка DNS), чтобы не искать в флагах.
+          for (int i = 12; i <= udp_payload_len - (int)sizeof(target_signature); i++) {
+              if (memcmp(dns_data + i, target_signature, sizeof(target_signature)) == 0) {
+                  printf(">>> Filter: Captured DNS Query for fake subnet 11.22.33.x\n");
+                  return ANSWER;
+              }
+          }
+          
+          // Если сигнатура не найдена — пропускаем пакет (пусть идет к настоящему DNS серверу)
+          return ACCEPT;
       }
   }
 
@@ -318,8 +353,8 @@ filter_status_e traceroute_filter(Packet input) {
 }
 
 int main() {
-  raw_forwarder_config_t config = {.source_interface = "eth0",
-                                   .dest_interface = "eth1",
+  raw_forwarder_config_t config = {.source_interface = "enp4s0",
+                                   .dest_interface = "enp4s0",
                                    .filter = traceroute_filter,
                                    .modify = NULL,
                                    .answer = traceroute_answer,
