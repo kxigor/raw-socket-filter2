@@ -1,0 +1,5 @@
+add_library(raw_socket_forwarder STATIC raw_socket_forwarder.c)
+
+target_include_directories(raw_socket_forwarder PUBLIC ${CMAKE_SOURCE_DIR})
+
+target_link_libraries(raw_socket_forwarder PUBLIC macros_helpers pthread)

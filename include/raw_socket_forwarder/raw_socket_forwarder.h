@@ -11,6 +11,15 @@
 
 #define BASIC_TIMEOUT_MS 500
 
+#define SYSERRCODE -1
+#define INVALID_SOCKET -1
+#define INVALID_IFINDEX 0
+#define INVALID_BIND -1
+#define INVALID_SEND -1
+#define INVALID_RECV -1
+#define INVALID_SETSOCK -1
+#define SUCCESS_PTHREAD 0
+
 typedef enum { ACCEPT, DROP, MODIFY, ANSWER } filter_status_e;
 
 typedef struct {
