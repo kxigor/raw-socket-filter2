@@ -27,7 +27,6 @@ typedef struct {
   size_t size;
 } Packet;
 
-/* TODO: postprocessor*/
 typedef struct {
   char source_interface[IF_NAMESIZE];
   char dest_interface[IF_NAMESIZE];
@@ -47,8 +46,6 @@ typedef struct {
 
   int source_socket_fd;
   int dest_socket_fd;
-
-  int error_status;
 } forwarder_handle_t;
 
 forwarder_handle_t* create_raw_filter(raw_forwarder_config_t config);
@@ -57,8 +54,5 @@ int destroy_raw_filter(forwarder_handle_t* handle);
 
 int start_raw_filter(forwarder_handle_t*);
 int stop_raw_filter(forwarder_handle_t*);
-
-int get_forwarder_status(const forwarder_handle_t* handle);
-int restart_raw_forwarder(forwarder_handle_t* handle);
 
 #endif  // RAW_SOCKET_FORWARDER_H

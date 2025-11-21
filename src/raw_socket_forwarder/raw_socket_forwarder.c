@@ -241,7 +241,7 @@ static void* pass_processor_thread(void* arg) {
 }
 
 static int setup_socket_timeout(int socket_fd, int timeout_ms) {
-  LOG_INFO("Setting socket timeout to %d ms for fd: %d", timeout_ms, socket_fd);
+  LOG_DEBUG("Setting socket timeout to %d ms for fd: %d", timeout_ms, socket_fd);
   struct timeval timeout = {
     .tv_sec = timeout_ms / 1000,
     .tv_usec = (timeout_ms % 1000) * 1000
