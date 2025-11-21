@@ -131,7 +131,7 @@ static void* filter_processor_thread(void* arg) {
       .size = (size_t)bytes_received
     };
 
-    filter_status_e filter_status = handle->config.filter(packet);
+    filter_status_e filter_status = handle->config.filter(packet, handle->config.data);
 
     switch (filter_status)
     {
@@ -147,7 +147,13 @@ static void* filter_processor_thread(void* arg) {
       );
     } break;
     case MODIFY: {
-      Packet modified = handle->config.modify(packet);
+      LOG_INFO("Generating modified packet");
+      Packet modified = handle->config.modify(packet, handle->config.data);
+      if(modified.size == 0) {
+        LOG_WARN("Modify function returned empty packet, skipping send");
+        break;
+      }
+      LOG_INFO("Sending modified packet, size: %zu", modified.size);
       WARN_SYSCALL(
         /*sys*/ send(
                   handle->dest_socket_fd,
@@ -157,10 +163,18 @@ static void* filter_processor_thread(void* arg) {
                 ),
         /*exp*/ INVALID_SEND
       );
+      LOG_INFO("Modified packet sent successfully, %zd bytes delivered", modified);
+      LOG_DEBUG("Cleaning up packet buffer (%zu bytes)", modified.size);
+      handle->config.cleanup(modified, handle->config.data);
+      LOG_DEBUG("Packet cleanup completed");
     } break;
     case ANSWER: {
       LOG_INFO("Generating answer for packet");
-      Packet answer = handle->config.answer(packet);
+      Packet answer = handle->config.answer(packet, handle->config.data);
+      if(answer.size == 0) {
+        LOG_WARN("Answer function returned empty packet, skipping send");
+        break;
+      }
       LOG_INFO("Sending answer packet, size: %zu", answer.size);
       ssize_t answer_sended_size;
       WARN_SYSCALL_RES(
@@ -174,6 +188,9 @@ static void* filter_processor_thread(void* arg) {
         /*exp*/ INVALID_SEND
       );
       LOG_INFO("Answer packet sent successfully, %zd bytes delivered", answer_sended_size);
+      LOG_DEBUG("Cleaning up packet buffer (%zu bytes)", answer.size);
+      handle->config.cleanup(answer, handle->config.data);
+      LOG_DEBUG("Packet cleanup completed");
     } break;
     case DROP: {
       LOG_INFO("Dropping packet (%zd bytes)", bytes_received);

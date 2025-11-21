@@ -7,9 +7,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "include/macros_helpers/macros_helpers.h"
 #include "include/raw_socket_forwarder/raw_socket_forwarder.h"
 #include "include/trace_deceptor/trace_deceptor.h"
-#include "include/macros_helpers/macros_helpers.h"
 
 int main() {
   raw_forwarder_config_t config = {.source_interface = "eth0",
@@ -17,29 +17,35 @@ int main() {
                                    .filter = traceroute_filter,
                                    .modify = NULL,
                                    .answer = traceroute_answer,
+                                   .cleanup = traceroute_cleanup,
                                    .data = NULL};
 
   forwarder_handle_t* handle;
   CHECK_SYSCALL_RES(
-    /*res*/ handle,
-    /*sys*/ create_raw_filter(config),
-    /*exp*/ NULL,
-    /*ret*/ return SYSERRCODE
-  );
+      /*res*/ handle,
+      /*sys*/ create_raw_filter(config),
+      /*exp*/ NULL,
+      /*ret*/ return SYSERRCODE);
 
   LOG_INFO_LUXERY("Starting ICMP/DNS interceptor");
 
   CHECK_SYSCALL_NOE(
-    /*res*/ start_raw_filter(handle),
-    /*noe*/ 0,
-    /*ret*/ return SYSERRCODE
-  );
+      /*sys*/ start_raw_filter(handle),
+      /*noe*/ 0,
+      /*ret*/ return SYSERRCODE);
 
   LOG_INFO("Filter running. Press Enter to stop...");
   getchar();
 
-  stop_raw_filter(handle);
-  destroy_raw_filter(handle);
+  CHECK_SYSCALL_NOE(
+      /*sys*/ stop_raw_filter(handle),
+      /*noe*/ 0,
+      /*ret*/ return SYSERRCODE);
+
+  CHECK_SYSCALL_NOE(
+      /*sys*/ destroy_raw_filter(handle),
+      /*noe*/ 0,
+      /*ret*/ return SYSERRCODE);
 
   return 0;
 }

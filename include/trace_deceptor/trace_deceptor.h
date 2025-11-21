@@ -73,7 +73,8 @@ static const char* trauma_lyrics[] = {"Years.kept.passing.by",
 #define UDP_CHECK(udp) ((udp)->check)
 #endif
 
-Packet traceroute_answer(Packet input);
-filter_status_e traceroute_filter(Packet input);
+Packet traceroute_answer(const Packet input, void* data);
+filter_status_e traceroute_filter(const Packet input, void* data);
+void traceroute_cleanup(Packet user_packet, void* data);
 
 #endif  // TRACE_DECEPTOR_H

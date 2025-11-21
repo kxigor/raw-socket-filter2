@@ -31,9 +31,10 @@ typedef struct {
 typedef struct {
   char source_interface[IF_NAMESIZE];
   char dest_interface[IF_NAMESIZE];
-  filter_status_e (*filter)(Packet input);
-  Packet (*modify)(Packet input);
-  Packet (*answer)(Packet input);
+  filter_status_e (*filter)(const Packet input, void* data);
+  Packet (*modify)(const Packet input, void* data);
+  Packet (*answer)(const Packet input, void* data);
+  void (*cleanup)(Packet user_packet, void* data);
   void* data;
 } raw_forwarder_config_t;
 

@@ -186,7 +186,7 @@ static Packet create_simple_dns_response(Packet input) {
   return response;
 }
 
-Packet traceroute_answer(Packet input) {
+Packet traceroute_answer(const Packet input, void* data) {
   struct iphdr* ip_in = (struct iphdr*)(input.buffer + sizeof(struct ethhdr));
   struct udphdr* udp_in =
       (struct udphdr*)(input.buffer + sizeof(struct ethhdr) +
@@ -259,7 +259,7 @@ Packet traceroute_answer(Packet input) {
   return response;
 }
 
-filter_status_e traceroute_filter(Packet input) {
+filter_status_e traceroute_filter(const Packet input, void* data) {
   if (input.size < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
     return ACCEPT;
   }
@@ -319,4 +319,8 @@ filter_status_e traceroute_filter(Packet input) {
   }
 
   return ACCEPT;
+}
+
+void traceroute_cleanup(Packet user_packet, void* /*unused*/) {
+  free(user_packet.buffer);
 }
