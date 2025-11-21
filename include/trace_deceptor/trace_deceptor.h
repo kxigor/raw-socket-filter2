@@ -19,47 +19,7 @@
 
 #include "include/raw_socket_forwarder/raw_socket_forwarder.h"
 
-#define TRIGGER_IP "66.66.66.66"
 #define FAKE_NET_PREFIX "11.22.33."
-#define MAX_HOPS 30
-
-static const char* trauma_lyrics[] = {"Years.kept.passing.by",
-                                      "Still.my.mind.hasn-t.forgotten",
-                                      "Corpses.lying.among.debris",
-                                      "Unrecognizable.rotten",
-                                      "Suffering.from.a.trauma",
-                                      "It.keeps.haunting.me",
-                                      "Considering.me.an.obsessional",
-                                      "But.they.will.never.know",
-                                      "The.massacres.in.former.days",
-                                      "Hatred.won-t.let.go",
-                                      "Nightmares.controlling.my.life",
-                                      "In.my.own.world.I.live",
-                                      "Suffer.day.and.night",
-                                      "I.face.pain.I.don-t.want.to.see",
-                                      "Makes.me.realize",
-                                      "It.won-t.leave.me",
-                                      "Horrible.events.pass.me.by",
-                                      "I.wake.from.my.cry",
-                                      "In.the.middle.of.the.night",
-                                      "I.find.myself.shuddering.in.sweat",
-                                      "Memories.of.sorrow.and.death",
-                                      "Nightmares.controlling.my.life",
-                                      "Trauma",
-                                      "Horrible.events.pass.me.by",
-                                      "Trauma",
-                                      "Bodies.filled.with.lead",
-                                      "They.all.have.met.an.untimely.death",
-                                      "Blood.was.everywhere",
-                                      "They.lived.in.chaos.and.despair",
-                                      "I.suffer.day.and.night",
-                                      "Trauma",
-                                      "I.wake.from.my.cries",
-                                      "Trauma",
-                                      "Considering.me.an.obsessional",
-                                      "But.they.will.never.know",
-                                      "The.massacres.in.former.days",
-                                      "Hatred.won-t.let.go"};
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 #define UDP_SOURCE(udp) ((udp)->uh_sport)
@@ -73,8 +33,16 @@ static const char* trauma_lyrics[] = {"Years.kept.passing.by",
 #define UDP_CHECK(udp) ((udp)->check)
 #endif
 
+typedef struct {
+  char** lyric_replacements;
+  size_t lyrics_size;
+
+  char** spoofed_ips;
+  size_t ips_size;
+} lyric_spoofer_config_t;
+
 Packet traceroute_answer(const Packet input, void* data);
 filter_status_e traceroute_filter(const Packet input, void* data);
-void traceroute_cleanup(Packet user_packet, void* data);
+void traceroute_cleanup(Packet user_packet, void* /*unused*/);
 
 #endif  // TRACE_DECEPTOR_H

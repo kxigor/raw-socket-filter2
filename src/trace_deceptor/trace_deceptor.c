@@ -95,7 +95,8 @@ static uint16_t compute_udp_checksum(struct iphdr* ip, struct udphdr* udp) {
   return checksum;
 }
 
-static Packet create_simple_dns_response(Packet input) {
+static Packet create_simple_dns_response(
+    Packet input, lyric_spoofer_config_t* spoofer_config) {
   static int name_index = 0;
 
   Packet response;
@@ -156,7 +157,7 @@ static Packet create_simple_dns_response(Packet input) {
   *(uint32_t*)answer_ptr = htonl(300);
   answer_ptr += 4;
 
-  const char* current_name = trauma_lyrics[name_index];
+  const char* current_name = spoofer_config->lyric_replacements[name_index];
   uint8_t name_len = strlen(current_name);
   *(uint16_t*)answer_ptr = htons(name_len + 2);
   answer_ptr += 2;
@@ -181,7 +182,7 @@ static Packet create_simple_dns_response(Packet input) {
 
   if (UDP_CHECK(udp) == 0) UDP_CHECK(udp) = 0xFFFF;
 
-  name_index = (name_index + 1) % 27;
+  name_index = (name_index + 1) % spoofer_config->lyrics_size;
 
   return response;
 }
@@ -194,7 +195,7 @@ Packet traceroute_answer(const Packet input, void* data) {
 
   if (ip_in->protocol == IPPROTO_UDP && ntohs(UDP_DEST(udp_in)) == 53) {
     LOG_INFO("Generating DNS Response (Lyrics)");
-    return create_simple_dns_response(input);
+    return create_simple_dns_response(input, (lyric_spoofer_config_t*)data);
   }
 
   static int current_hop = 1;
@@ -260,6 +261,8 @@ Packet traceroute_answer(const Packet input, void* data) {
 }
 
 filter_status_e traceroute_filter(const Packet input, void* data) {
+  lyric_spoofer_config_t* spoofer_config = (lyric_spoofer_config_t*)data;
+
   if (input.size < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
     return ACCEPT;
   }
@@ -284,12 +287,17 @@ filter_status_e traceroute_filter(const Packet input, void* data) {
 
     uint16_t dest_port = ntohs(UDP_DEST(udp));
 
-    struct in_addr target_ip;
-    inet_pton(AF_INET, TRIGGER_IP, &target_ip);
+    for (size_t i = 0; i < spoofer_config->ips_size; ++i) {
+      const char* triggered_ip = spoofer_config->spoofed_ips[i];
 
-    if (ip_header->daddr == target_ip.s_addr && dest_port >= 33434) {
-      LOG_INFO("Intercepted traceroute packet to %s:%d", TRIGGER_IP, dest_port);
-      return ANSWER;
+      struct in_addr target_ip;
+      inet_pton(AF_INET, triggered_ip, &target_ip);
+
+      if (ip_header->daddr == target_ip.s_addr && dest_port >= 33434) {
+        LOG_INFO("Intercepted traceroute packet to %s:%d", triggered_ip,
+                 dest_port);
+        return ANSWER;
+      }
     }
 
     if (dest_port == 53) {

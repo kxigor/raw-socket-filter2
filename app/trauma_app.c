@@ -1,3 +1,5 @@
+#include "trauma_app.h"
+
 #include <arpa/inet.h>
 #include <linux/version.h>
 #include <netinet/if_ether.h>
@@ -12,18 +14,23 @@
 #include "include/trace_deceptor/trace_deceptor.h"
 
 int main() {
-  raw_forwarder_config_t config = {.source_interface = "eth0",
-                                   .dest_interface = "eth1",
-                                   .filter = traceroute_filter,
-                                   .modify = NULL,
-                                   .answer = traceroute_answer,
-                                   .cleanup = traceroute_cleanup,
-                                   .data = NULL};
+  lyric_spoofer_config_t spoofer_config = {.lyric_replacements = trauma_lyrics,
+                                           .lyrics_size = trauma_lyrics_size,
+                                           .spoofed_ips = spoofed_ips,
+                                           .ips_size = spoofed_ips_size};
+
+  raw_forwarder_config_t forwarder_config = {.source_interface = "eth0",
+                                             .dest_interface = "eth1",
+                                             .filter = traceroute_filter,
+                                             .modify = NULL,
+                                             .answer = traceroute_answer,
+                                             .cleanup = traceroute_cleanup,
+                                             .data = (void*)&spoofer_config};
 
   forwarder_handle_t* handle;
   CHECK_SYSCALL_RES(
       /*res*/ handle,
-      /*sys*/ create_raw_filter(config),
+      /*sys*/ create_raw_filter(forwarder_config),
       /*exp*/ NULL,
       /*ret*/ return SYSERRCODE);
 
