@@ -163,7 +163,7 @@ static void* filter_processor_thread(void* arg) {
                 ),
         /*exp*/ INVALID_SEND
       );
-      LOG_INFO("Modified packet sent successfully, %zd bytes delivered", modified);
+      LOG_INFO("Modified packet sent successfully, %zu bytes delivered", modified);
       LOG_DEBUG("Cleaning up packet buffer (%zu bytes)", modified.size);
       handle->config.cleanup(modified, handle->config.data);
       LOG_DEBUG("Packet cleanup completed");
